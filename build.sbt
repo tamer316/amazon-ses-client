@@ -1,5 +1,5 @@
 name := "amazon-ses-client"
-organization := "dev.choppers"
+organization := "dev.tamer"
 version := "1.0.0"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8")
@@ -26,11 +26,3 @@ lazy val root = (project in file("."))
     testOptions in Test := Seq(Tests.Filter(unitTestFilter)),
     testOptions in IntTest := Seq(Tests.Filter(integrationTestFilter))
   )
-
-publishTo := {
-  val host = "https://artifactory.choppers.technology/artifactory/"
-  if (isSnapshot.value)
-    Some("Artifactory Snapshot Realm" at host + "sbt-snapshot-local")
-  else
-    Some("Artifactory Release Realm" at host + "sbt-release-local")
-}
