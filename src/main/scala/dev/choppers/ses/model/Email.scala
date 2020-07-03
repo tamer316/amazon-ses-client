@@ -15,12 +15,19 @@ object Address {
       .toString
     new Address(address, personal, charset, encoded)
   }
+
+  implicit def toInternetAddress(address: Address): InternetAddress = {
+    address.personal
+      .map(new InternetAddress(address.address, _, address.charset))
+      .getOrElse(new InternetAddress(address.address))
+  }
 }
 
 
 case class Content(data: String,
                    charset: String = "UTF-8")
 
+case class EmailAttachment(contentType: String, name: String, contents: Array[Byte])
 
 case class Email(subject: Content,
                  source: Address,
@@ -30,4 +37,5 @@ case class Email(subject: Content,
                  cc: Seq[Address] = Seq.empty,
                  bcc: Seq[Address] = Seq.empty,
                  replyTo: Seq[Address] = Seq.empty,
-                 returnPath: Option[String] = None)
+                 returnPath: Option[String] = None,
+                 attachments: Seq[EmailAttachment] = Seq.empty)

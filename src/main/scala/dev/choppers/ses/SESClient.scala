@@ -1,5 +1,8 @@
 package dev.choppers.ses
 
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.util.Properties
 import java.util.concurrent.{ExecutorService, Future => JFuture}
 
 import com.amazonaws.AmazonWebServiceRequest
@@ -7,51 +10,116 @@ import com.amazonaws.auth._
 import com.amazonaws.handlers.AsyncHandler
 import com.amazonaws.regions.Region
 import com.amazonaws.services.simpleemail._
-import com.amazonaws.services.simpleemail.model._
+import com.amazonaws.services.simpleemail.model.{RawMessage, SendRawEmailRequest, SendRawEmailResult}
 import dev.choppers.ses.model.Email
+import javax.activation.DataHandler
+import javax.mail.Message.RecipientType
+import javax.mail.internet.{MimeBodyPart, MimeMessage, MimeMultipart}
+import javax.mail.util.ByteArrayDataSource
+import javax.mail.{Address, Session}
 
-import scala.collection.JavaConverters._
 import scala.concurrent.{Future, Promise}
 
 trait SES {
   self: SESClient =>
 
   import aws._
+  import dev.choppers.ses.model.Address.toInternetAddress
 
-  def buildRequest(email: Email): SendEmailRequest = {
-    val destination = new Destination()
-    if (email.to.nonEmpty) destination.setToAddresses(email.to.map(_.encoded).asJavaCollection)
-    if (email.cc.nonEmpty) destination.setCcAddresses(email.cc.map(_.encoded).asJavaCollection)
-    if (email.bcc.nonEmpty) destination.setBccAddresses(email.bcc.map(_.encoded).asJavaCollection)
+  def addBody(wrap: MimeBodyPart, email: Email) = {
+    // Create a multipart/alternative child container.
+    val msgBody = new MimeMultipart("alternative")
 
-    val subject = new Content(email.subject.data).withCharset(email.subject.charset)
-
-    val body = new Body()
     email.bodyHtml.foreach { bodyHtml =>
-      val htmlContent = new Content(bodyHtml.data)
-      htmlContent.setCharset(bodyHtml.charset)
-      body.setHtml(htmlContent)
+      val htmlPart = new MimeBodyPart()
+      htmlPart.setContent(bodyHtml.data, s"text/html; charset=${bodyHtml.charset}")
+      msgBody.addBodyPart(htmlPart)
     }
+
     email.bodyText.foreach { bodyText =>
-      val textContent = new Content(bodyText.data)
-      textContent.setCharset(bodyText.charset)
-      body.setText(textContent)
+      val textPart = new MimeBodyPart()
+      textPart.setContent(bodyText.data, s"text/plain; charset=${bodyText.charset}")
+      msgBody.addBodyPart(textPart)
     }
 
-    val message = new Message(subject, body)
-
-    val req = new SendEmailRequest(email.source.encoded, destination, message)
-    if (email.replyTo.nonEmpty) req.setReplyToAddresses(email.replyTo.map(_.encoded).asJavaCollection)
-
-    email.returnPath.map { returnPath =>
-      req.setReturnPath(returnPath)
-    }
-
-    req
+    // Add the child container to the wrapper object.
+    wrap.setContent(msgBody)
   }
 
-  def send(email: Email): Future[SendEmailResult] = wrapAsyncMethod {
-    sendEmailAsync(buildRequest(email), _: AsyncHandler[SendEmailRequest, SendEmailResult])
+  def buildRequest(email: Email): SendRawEmailRequest = {
+    val props = new Properties()
+
+    email.returnPath.foreach(props.put("mail.smtp.from", _))
+
+    val session = Session.getDefaultInstance(props)
+
+    // Create a new MimeMessage object.
+    val message = new MimeMessage(session)
+
+    // Add subject, from and to lines.
+    message.setSubject(email.subject.data, email.subject.charset)
+
+    addAddresses(message, email)
+
+    // Create a multipart/mixed parent container.
+    val msg = new MimeMultipart("mixed")
+
+    // Add the parent container to the message.
+    message.setContent(msg)
+
+    // Create a wrapper for the HTML and text parts.
+    val wrap = new MimeBodyPart()
+
+    addBody(wrap, email)
+
+    // Add the multipart/alternative part to the message.
+    msg.addBodyPart(wrap)
+
+    addAttachments(msg, email)
+
+    // Send the email.
+    val outputStream = new ByteArrayOutputStream()
+    message.writeTo(outputStream)
+    val rawMessage = new RawMessage(ByteBuffer.wrap(outputStream.toByteArray))
+
+    new SendRawEmailRequest(rawMessage)
+  }
+
+  def send(email: Email): Future[SendRawEmailResult] = wrapAsyncMethod {
+    sendRawEmailAsync(buildRequest(email), _: AsyncHandler[SendRawEmailRequest, SendRawEmailResult])
+  }
+
+  private def addAddresses(message: MimeMessage, email: Email): Unit = {
+    message.setFrom(email.source)
+
+    if (email.to.nonEmpty) {
+      message.setRecipients(RecipientType.TO, email.to.map(toInternetAddress).toArray[Address])
+    }
+
+    if (email.cc.nonEmpty) {
+      message.setRecipients(RecipientType.CC, email.cc.map(toInternetAddress).toArray[Address])
+    }
+
+    if (email.bcc.nonEmpty) {
+      message.setRecipients(RecipientType.BCC, email.bcc.map(toInternetAddress).toArray[Address])
+    }
+
+    if (email.replyTo.nonEmpty) {
+      message.setReplyTo(email.replyTo.map(toInternetAddress).toArray[Address])
+    }
+  }
+
+  private def addAttachments(msg: MimeMultipart, email: Email): Unit = {
+    email.attachments.foreach { attachment =>
+      // Define the attachment
+      val att = new MimeBodyPart()
+      val fds = new ByteArrayDataSource(attachment.contents, attachment.contentType)
+      att.setDataHandler(new DataHandler(fds))
+      att.setFileName(attachment.name)
+
+      // Add the attachment to the message.
+      msg.addBodyPart(att)
+    }
   }
 
   /**
