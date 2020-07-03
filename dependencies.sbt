@@ -2,7 +2,8 @@ libraryDependencies ++= {
   val logbackV = "1.1.2"
   val grizzledV = "1.3.0"
   val awsSesV = "1.11.87"
-  val mailV = "1.5.2"
+  val mailV = "1.6.1"
+  val activationV = "1.1.1"
   val scalaTestV = "3.0.1"
   val specs2V = "3.8.8"
   Seq(
@@ -10,6 +11,7 @@ libraryDependencies ++= {
     "org.clapper" %% "grizzled-slf4j" % grizzledV,
     "com.amazonaws" % "aws-java-sdk-ses" % awsSesV,
     "com.sun.mail" % "javax.mail" % mailV,
+    "javax.activation" % "activation" % activationV,
     "org.scalatest" %% "scalatest" % scalaTestV % "test",
     "org.specs2" % "specs2-core_2.11" % specs2V % "test",
     "org.specs2" % "specs2-mock_2.11" % specs2V % "test"
