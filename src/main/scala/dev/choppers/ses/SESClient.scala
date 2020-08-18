@@ -26,6 +26,8 @@ trait SES {
   import aws._
   import dev.choppers.ses.model.Address.toInternetAddress
 
+  val contentTransferEncodingHeader = "Content-Transfer-Encoding"
+
   def addBody(wrap: MimeBodyPart, email: Email) = {
     // Create a multipart/alternative child container.
     val msgBody = new MimeMultipart("alternative")
@@ -33,14 +35,14 @@ trait SES {
     email.bodyHtml.foreach { bodyHtml =>
       val htmlPart = new MimeBodyPart()
       htmlPart.setContent(bodyHtml.data, s"text/html; charset=${bodyHtml.charset}")
-      bodyHtml.contentTransferEncoding.foreach(cte => htmlPart.addHeader("Content-Transfer-Encoding", cte))
+      bodyHtml.contentTransferEncoding.foreach(cte => htmlPart.addHeader(contentTransferEncodingHeader, cte))
       msgBody.addBodyPart(htmlPart)
     }
 
     email.bodyText.foreach { bodyText =>
       val textPart = new MimeBodyPart()
       textPart.setContent(bodyText.data, s"text/plain; charset=${bodyText.charset}")
-      bodyText.contentTransferEncoding.foreach(cte => textPart.addHeader("Content-Transfer-Encoding", cte))
+      bodyText.contentTransferEncoding.foreach(cte => textPart.addHeader(contentTransferEncodingHeader, cte))
       msgBody.addBodyPart(textPart)
     }
 
@@ -118,6 +120,8 @@ trait SES {
       val fds = new ByteArrayDataSource(attachment.contents, attachment.contentType)
       att.setDataHandler(new DataHandler(fds))
       att.setFileName(attachment.name)
+      attachment.contentDisposition.foreach(att.setDisposition)
+      attachment.contentTransferEncoding.foreach(cte => att.setHeader(contentTransferEncodingHeader, cte))
 
       // Add the attachment to the message.
       msg.addBodyPart(att)

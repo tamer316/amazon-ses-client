@@ -28,7 +28,11 @@ case class Content(data: String,
                    charset: String = "UTF-8",
                    contentTransferEncoding: Option[String] = None)
 
-case class EmailAttachment(contentType: String, name: String, contents: Array[Byte])
+case class EmailAttachment(contentType: String,
+                           name: String,
+                           contents: Array[Byte],
+                           contentDisposition: Option[String] = None,
+                           contentTransferEncoding: Option[String] = None)
 
 case class Email(subject: Content,
                  source: Address,
