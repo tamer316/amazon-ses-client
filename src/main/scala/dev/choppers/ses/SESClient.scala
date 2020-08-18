@@ -33,12 +33,14 @@ trait SES {
     email.bodyHtml.foreach { bodyHtml =>
       val htmlPart = new MimeBodyPart()
       htmlPart.setContent(bodyHtml.data, s"text/html; charset=${bodyHtml.charset}")
+      bodyHtml.contentTransferEncoding.foreach(cte => htmlPart.addHeader("Content-Transfer-Encoding", cte))
       msgBody.addBodyPart(htmlPart)
     }
 
     email.bodyText.foreach { bodyText =>
       val textPart = new MimeBodyPart()
       textPart.setContent(bodyText.data, s"text/plain; charset=${bodyText.charset}")
+      bodyText.contentTransferEncoding.foreach(cte => textPart.addHeader("Content-Transfer-Encoding", cte))
       msgBody.addBodyPart(textPart)
     }
 

@@ -25,7 +25,8 @@ object Address {
 
 
 case class Content(data: String,
-                   charset: String = "UTF-8")
+                   charset: String = "UTF-8",
+                   contentTransferEncoding: Option[String] = None)
 
 case class EmailAttachment(contentType: String, name: String, contents: Array[Byte])
 
