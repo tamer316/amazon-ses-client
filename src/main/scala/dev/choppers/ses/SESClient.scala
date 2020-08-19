@@ -10,14 +10,17 @@ import com.amazonaws.auth._
 import com.amazonaws.handlers.AsyncHandler
 import com.amazonaws.regions.Region
 import com.amazonaws.services.simpleemail._
-import com.amazonaws.services.simpleemail.model.{RawMessage, SendRawEmailRequest, SendRawEmailResult}
+import com.amazonaws.services.simpleemail.model._
 import dev.choppers.ses.model.Email
 import javax.activation.DataHandler
+
+import scala.collection.JavaConverters._
 import javax.mail.Message.RecipientType
 import javax.mail.internet.{MimeBodyPart, MimeMessage, MimeMultipart}
 import javax.mail.util.ByteArrayDataSource
 import javax.mail.{Address, Session}
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, Promise}
 
 trait SES {
@@ -26,27 +29,7 @@ trait SES {
   import aws._
   import dev.choppers.ses.model.Address.toInternetAddress
 
-  def addBody(wrap: MimeBodyPart, email: Email) = {
-    // Create a multipart/alternative child container.
-    val msgBody = new MimeMultipart("alternative")
-
-    email.bodyText.foreach { bodyText =>
-      val textPart = new MimeBodyPart()
-      textPart.setContent(bodyText.data, s"text/plain; charset=${bodyText.charset}")
-      msgBody.addBodyPart(textPart)
-    }
-
-    email.bodyHtml.foreach { bodyHtml =>
-      val htmlPart = new MimeBodyPart()
-      htmlPart.setContent(bodyHtml.data, s"text/html; charset=${bodyHtml.charset}")
-      msgBody.addBodyPart(htmlPart)
-    }
-
-    // Add the child container to the wrapper object.
-    wrap.setContent(msgBody)
-  }
-
-  def buildRequest(email: Email): SendRawEmailRequest = {
+  def buildRawRequest(email: Email): SendRawEmailRequest = {
     val props = new Properties()
 
     email.returnPath.foreach(props.put("mail.smtp.from", _))
@@ -85,8 +68,62 @@ trait SES {
     new SendRawEmailRequest(rawMessage)
   }
 
-  def send(email: Email): Future[SendRawEmailResult] = wrapAsyncMethod {
-    sendRawEmailAsync(buildRequest(email), _: AsyncHandler[SendRawEmailRequest, SendRawEmailResult])
+  def buildRequest(email: Email): SendEmailRequest = {
+    val destination = new Destination()
+    if (email.to.nonEmpty) destination.setToAddresses(email.to.map(_.encoded).asJavaCollection)
+    if (email.cc.nonEmpty) destination.setCcAddresses(email.cc.map(_.encoded).asJavaCollection)
+    if (email.bcc.nonEmpty) destination.setBccAddresses(email.bcc.map(_.encoded).asJavaCollection)
+
+    val subject = new Content(email.subject.data).withCharset(email.subject.charset)
+
+    val body = new Body()
+    email.bodyHtml.foreach { bodyHtml =>
+      val htmlContent = new Content(bodyHtml.data)
+      htmlContent.setCharset(bodyHtml.charset)
+      body.setHtml(htmlContent)
+    }
+    email.bodyText.foreach { bodyText =>
+      val textContent = new Content(bodyText.data)
+      textContent.setCharset(bodyText.charset)
+      body.setText(textContent)
+    }
+
+    val message = new Message(subject, body)
+
+    val req = new SendEmailRequest(email.source.encoded, destination, message)
+    if (email.replyTo.nonEmpty) req.setReplyToAddresses(email.replyTo.map(_.encoded).asJavaCollection)
+
+    email.returnPath.foreach(req.setReturnPath)
+
+    req
+  }
+
+  def send(email: Email): Future[Unit] = wrapAsyncMethod {
+    if (email.attachments.isEmpty) {
+      sendEmailAsync(buildRequest(email), _: AsyncHandler[SendEmailRequest, SendEmailResult])
+    } else {
+      sendRawEmailAsync(buildRawRequest(email), _: AsyncHandler[SendRawEmailRequest, SendRawEmailResult])
+    }
+  }.map(_ => ())
+
+  private def addBody(wrap: MimeBodyPart, email: Email): Unit = {
+    // Create a multipart/alternative child container.
+    val msgBody = new MimeMultipart("alternative")
+
+    email.bodyText.foreach { bodyText =>
+      val textPart = new MimeBodyPart()
+      textPart.setContent(bodyText.data, s"text/plain; charset=${bodyText.charset}")
+      msgBody.addBodyPart(textPart)
+    }
+
+    email.bodyHtml.foreach { bodyHtml =>
+      val htmlPart = new MimeBodyPart()
+      htmlPart.setContent(bodyHtml.data, s"text/html; charset=${bodyHtml.charset}")
+      msgBody.addBodyPart(htmlPart)
+    }
+
+    // Add the child container to the wrapper object.
+    wrap.setContent(msgBody)
   }
 
   private def addAddresses(message: MimeMessage, email: Email): Unit = {

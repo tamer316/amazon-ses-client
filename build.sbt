@@ -1,6 +1,6 @@
 name := "amazon-ses-client"
 organization := "dev.tamer"
-version := "2.1.3"
+version := "2.2.0"
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-encoding", "utf8")
 
