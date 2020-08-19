@@ -98,13 +98,16 @@ trait SES {
     req
   }
 
-  def send(email: Email): Future[Unit] = wrapAsyncMethod {
-    if (email.attachments.isEmpty) {
-      sendEmailAsync(buildRequest(email), _: AsyncHandler[SendEmailRequest, SendEmailResult])
+  def send(email: Email): Future[Unit] =
+    (if (email.attachments.isEmpty) {
+      wrapAsyncMethod {
+        sendEmailAsync(buildRequest(email), _: AsyncHandler[SendEmailRequest, SendEmailResult])
+      }
     } else {
-      sendRawEmailAsync(buildRawRequest(email), _: AsyncHandler[SendRawEmailRequest, SendRawEmailResult])
-    }
-  }.map(_ => ())
+      wrapAsyncMethod {
+        sendRawEmailAsync(buildRawRequest(email), _: AsyncHandler[SendRawEmailRequest, SendRawEmailResult])
+      }
+    }).map(_ => ())
 
   private def addBody(wrap: MimeBodyPart, email: Email): Unit = {
     // Create a multipart/alternative child container.
